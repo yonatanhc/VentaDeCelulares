@@ -1,0 +1,38 @@
+sequenceDiagram
+  autonumber
+  participant FE as UI Frontend
+  participant TI as Taxes Inquiry
+  participant S3 as S3 Tax Files
+  participant DB as Aurora
+  participant EB as EventBridge
+  participant L1 as Lambda NewFileUploaded
+  participant K as Kafka ARBO TaxFile
+  participant SU as S3 Signed URL Service
+  participant FBC as FB Outbound Connector
+  participant FB as Frame Banking
+  participant PC as Partner Callback
+  participant N as Notification
+  FE->>TI: Get S3 Presigned URL for upload
+  TI-->>FE: URL prefirmada
+  FE->>S3: PUT archivo
+  S3->>EB: New File Uploaded Event
+  EB->>L1: Start Lambda
+  L1->>K: Publish Uploaded File MetaData
+  K->>TI: Consume NewFile message
+  TI->>DB: Insert metadata (InProgress)
+  TI->>EB: Create Scheduler (now + 5min)
+  TI->>SU: Get S3 Signed URL
+  SU-->>TI: URL firmada de descarga
+  TI->>FBC: Invoke Uploaded File Notification API
+  FBC->>FB: Invoke Uploaded File Notification API
+  FB-->>FBC: Ack
+  TI->>DB: Update status (URLSent)
+  FB->>S3: Descarga con URL firmada (solo en la arquitectura)
+  FB->>PC: Download Async Response (callback)
+  PC->>K: Publish Callback message
+  K->>TI: Consume Callback message
+  TI->>DB: Update status (CallbackReceived)
+  TI->>S3: Delete File
+  TI->>DB: Update status (FileDeleted)
+  TI->>N: Email: File Successfully Imported by FB
+  TI->>EB: Delete FileID Scheduler
